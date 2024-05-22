@@ -1,0 +1,201 @@
+﻿<AML>
+ <Item type="Method" id="2DDA68C59FDC42C0B588CD8509C9EDBC" action="add">
+  <execution_allowed_to keyed_name="World" type="Identity">A73B655731924CD0B027E4F4D5FCC0A9</execution_allowed_to>
+  <method_code><![CDATA[
+            #region lsi_myChangedItems_onGet
+
+            /* *****************************************************************************
+			Method Name:			pbj_myChangedItems_onGet
+			Created By              phillip.cook
+			Creation Date:			2022-12-14
+			Description:            Method that fires onbeforeGet to get all changed Items specific to that User.
+				
+			Hooks:
+				Type:		My Changed Items
+				Event:		onBeforeGet
+			
+			Revisions:
+				Rev Date		Modified By			Description
+				2022-12-14		phillip.cook		Initial creation
+				2022-01-21      phillip.cook        Update Header FROM LSI TO PB&J
+			***************************************************************************** */
+
+            string MethodName = "lsi_myChangedItems_onGet";
+
+            //***** GRANT IDENTITY PRIVILEGES
+            grantIdentityPrivileges("Aras PLM");	// If this is enabled always revoke the privileges in the Finally below.
+            //*******************************
+
+            Item result = this;   
+            // default return value.
+
+            try
+            {
+
+                //****************************************
+                Innovator innovator = getInnovator();
+
+                string currentUserID = innovator.getUserID();
+
+                //Whack any existing recoreds on the SQL Table
+                string sql = string.Format(@"DELETE FROM [INNOVATOR].[MY_CHANGED_ITEMS]");
+
+                Item itm = inn.applySQL(sql);
+
+                //Array of Items to loop through
+                 string[] itemTypes = {"ITEMTYPE","METHOD","PERMISSION","FORM","LIST","TEAM","LIFE_CYCLE_MAP","WORKFLOW_MAP","RELATIONSHIPTYPE"
+                                      ,"SEQUENCE","GRID","IDENTITY","USER","SQL","QRY_QUERYDEFINITION","RB_TREEGRIDVIEWDEFINITION","ACTION","REPORT","FAVORITE","COMMANDBARSECTIONITEM","COMMANDBARMENUBUTTON","PRESENTATIONCONFIGURATION","COMMANDBARSECTION","COMMANDBARITEM"};
+
+                foreach (string itemType in itemTypes)
+                {
+                    sql = string.Format(@"SELECT it.[KEYED_NAME] AS ITEM ,it.MODIFIED_ON, pd.NAME AS PACKAGE
+                                        FROM [INNOVATOR].[PACKAGEDEFINITION] AS pd
+                                      INNER JOIN [INNOVATOR].[PACKAGEGROUP] AS pg ON pg.[SOURCE_ID] = pd.[ID]
+                                      INNER JOIN [INNOVATOR].[PACKAGEELEMENT] AS pe ON pe.[SOURCE_ID] = pg.[ID]
+                                      RIGHT JOIN [INNOVATOR].[{0}] AS it ON it.[ID] = pe.[ELEMENT_ID]
+                                      WHERE it.MODIFIED_BY_ID = '{1}' AND it.IS_CURRENT = '1'",itemType, currentUserID);
+
+                    itm = inn.applySQL(sql);
+
+                    if (itm.isError() || itm.isEmpty()) {
+                        continue;
+                    }
+                        
+                    //We got this far so loop through the Items
+                    for (int i = 0; i < itm.getItemCount(); i++)
+                    {
+                        Item items = itm.getItemByIndex(i);
+
+                        string item = items.getProperty("item");
+                        string modifiedOn = items.getProperty("modified_on");
+                        string package = items.getProperty("package", "");
+                       
+                        //Create a unique GUID for each apply
+                        string uniqueGuid = System.Guid.NewGuid().ToString("N").ToUpper();
+
+                        //This GUID will never change so for performance I am hardcoding the value
+                        string myChangedItemsPermissionID = "0186164676FB42D1B0C1609378A55FA9";
+
+                        //Get the Current Date for created_on
+                        var createdOnDate= DateTime.UtcNow.ToString();
+                        innovator.getI18NSessionContext().ConvertFromNeutral(createdOnDate, "yyyy-MM-ddTHH:mm:ss");
+
+                        sql = string.Format(@"INSERT INTO innovator.MY_CHANGED_ITEMS
+                                                (id,CONFIG_ID,created_on,CREATED_BY_ID,PERMISSION_ID,_ITEM,_ITEMTYPE,_MODIFIED_ON,_PACKAGE)
+                                                Values
+                                                ('{0}','{0}','{1}','{2}','{3}','{4}','{5}','{6}','{7}')",
+                                                uniqueGuid,createdOnDate,currentUserID,myChangedItemsPermissionID,item, itemType, modifiedOn, package);
+
+                        Item SQLUpdateitm = inn.applySQL(sql);
+
+                    }
+                }
+
+                //****************************************
+
+            }
+            //throw ArgumentExceptions for errors which are anticipated, such as validating a user has updated certain properties
+            //error is plainly presented to the user
+            catch (System.ArgumentException argex)
+            {
+                result = inn.newError(argex.Message);
+                //result.setErrorCode("0");		//only use if this method is called from another method
+            }
+            //throw ApplicationExceptions for any other errors which are checked for in code, such as when a query returns an error item
+            //error is presented with a bold header including the methodname
+            catch (System.ApplicationException appex)
+            {
+                result = inn.newError(string.Format("<b>ERROR in method {0}</b><br>{1}", MethodName, appex.Message));
+                //result.setErrorCode("0");		//only use if this method is called from another method
+            }
+            //catch any other unexpected exceptions
+            //error is presented with a bold header including the methodname
+            //catch (System.Exception ex){
+            //	result = inn.newError(string.Format("<b>SYSTEM EXCEPTION in method {0}</b><br>{1}", MethodName, ex.Message));
+            ////result.setErrorCode("0");		//only use if this method is called from another method
+            //}
+            finally
+            {
+                //**** REVOKE IDENTITY PRIVILEGES
+                revokeIdentityPrivileges();
+                //*******************************
+            }
+
+            return result;
+        }
+
+        // _____ Custom helper functions _____
+
+
+        //Template Members and helper functions _____
+        #region "Innovator inn;"
+
+        private Innovator _inn;
+        public Innovator inn
+        {
+            get
+            {
+                if (_inn == null)
+                    _inn = this.getInnovator();
+                return _inn;
+            }
+        }
+
+        #endregion
+
+
+        #region "Identity Privileges"
+        /// <summary>
+        /// This section is to allow the current method to assume the privileges of a specific identity.
+        /// For instance calling: grantIdentityPrivileges("Aras PLM"); will allow this method all of the
+        /// rights of the Aras PLM identity.
+        /// The revokeIdentityPrivileges() method will removed the privileges added for this method. It
+        /// must be called from before the method exits. Most likely in the Finally of the main method code.
+        /// If different identity privileges must be granted a second time within the same method, first use
+        /// revokeIdentityPrivileges() to remove the first privileges before granting new ones.
+        /// </summary>
+
+        private string AssignedIdentity;
+
+        /// <summary>
+        /// If required, call this helper function to run this method as another Identity. 
+        /// Ensure that you call the revokeIdentityPrivileges helper function in the 
+        /// finally block to revoke the Identity privilege when this method completes.
+        /// </summary>
+        public void grantIdentityPrivileges(string assignedIdent)
+        {
+            if (!string.IsNullOrEmpty(AssignedIdentity))
+            {
+                revokeIdentityPrivileges();
+            }
+
+            Aras.Server.Security.Identity secIdentity = Aras.Server.Security.Identity.GetByName(assignedIdent);
+            if (Aras.Server.Security.Permissions.GrantIdentity(secIdentity))
+            {
+                AssignedIdentity = assignedIdent;
+            }
+        }
+
+        /// <summary>
+        /// If you granted security privileges, then you need to ensure that you revoke the privilege.
+        /// </summary>
+        public void revokeIdentityPrivileges()
+        {
+            if (AssignedIdentity != null)
+            {
+                Aras.Server.Security.Permissions.RevokeIdentity(Aras.Server.Security.Identity.GetByName(AssignedIdentity));
+                AssignedIdentity = null;
+            }
+        }
+
+        #endregion
+
+        private void end_of_method_()
+        {
+            #endregion
+
+           ]]></method_code>
+  <method_type>C#</method_type>
+  <name>pbj_myChangedItems_onGet</name>
+ </Item>
+</AML>

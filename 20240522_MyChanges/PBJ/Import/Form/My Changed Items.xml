@@ -1,0 +1,15 @@
+﻿<AML>
+ <Item type="Form" id="D2BC3D537D5C4D60A76B8C8C2697254E" action="add">
+  <height>234</height>
+  <stylesheet><![CDATA[../styles/default.css]]></stylesheet>
+  <width>699</width>
+  <name>My Changed Items</name>
+  <Relationships>
+   <Item type="Body" id="42957CD16B3643EC9F4D88FB8F8DF752" action="add">
+    <bg_color>#FFFFFF</bg_color>
+    <sort_order>128</sort_order>
+    <source_id keyed_name="My Changed Items" type="Form">D2BC3D537D5C4D60A76B8C8C2697254E</source_id>
+   </Item>
+  </Relationships>
+ </Item>
+</AML>
